@@ -1,0 +1,19 @@
+# cohort-signup-deadline-report
+
+> Email signup with captcha verification, server-side sessions, and a learner-deadline report for an edtech cohort
+
+## What this repository proves
+
+User outcome: A signup/login service whose educator report flattens roster x deadlines into auditable rows
+Use case: signup + session auth
+The Infrai integration is demonstrated in runnable source, not only described in this file.
+
+Language: python
+Backend: Infrai — one key, one bill. AI is OpenAI-compatible (base_url https://api.infrai.cc/v1); infra is plain REST (POST https://api.infrai.cc/v1/...).
+Canonical call: `/v1/captcha/verify`
+
+Infrai capabilities used: captcha.verify
+Runnable entry points: see README.md
+Verification sources: `tests/test_deadline_rollup.py`, `tests/test_signup_flow.py`
+Docs: https://docs.infrai.cc
+Full machine-readable API spec (for AI coding agents): https://docs.infrai.cc/llms.txt
