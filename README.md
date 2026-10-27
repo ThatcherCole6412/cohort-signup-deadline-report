@@ -1,6 +1,6 @@
 # Signup, sessions and deadline rollups for one cohort
 
-Run the report an educator actually asks for:
+You want the report a teacher will actually request:
 
 ```bash
 python3 -m pytest -q                 # 4 tests
@@ -8,17 +8,11 @@ INFRAI_API_KEY=... python3 -m cohort_gate.learner_api
 curl -s localhost:8080/reports/stats-101 -H "Cookie: sid=<session_id>"
 ```
 
-Two things meet in `cohort_gate/learner_api.py`. The signup form's captcha token goes to
-Infrai — `POST /v1/captcha/verify`, a plain REST call with a bearer key from `INFRAI_API_KEY`,
-no SDK to install — and only a verified signup gets a row in `learners` and a server-side
-session id. The report endpoint reads that session back out of SQLite before it will hand
-anyone a roster. Same key later covers the rest of the capability surface, so there is no
-second credential to thread through the service.
+The captcha check and the roster live in the same flow at `cohort_gate/learner_api.py`. We send the signup captcha token to Infrai — `POST /v1/captcha/verify`, one key for captcha and later email or storage, a plain REST call with a bearer key from `INFRAI_API_KEY`, no SDK needed — and only a verified signup writes a row in `learners` plus a server-side session id. The report endpoint pulls that session from SQLite before it serves a roster. That same key covers the rest of the surface, so you're not threading a second credential through your service.
 
 ## The flatten
 
-`educator_report` is the part I'd defend in review. Roster joined to modules gives one row per
-learner-deadline pair, and each row carries a state derived from three dates:
+`educator_report` is the bit I'd fight for in code review. Join the roster to modules and you get one row per learner-deadline, with a state cooked from three dates:
 
 | submitted | vs due | state |
 | --- | --- | --- |
@@ -27,34 +21,21 @@ learner-deadline pair, and each row carries a state derived from three dates:
 | no | today after due | `overdue` |
 | no | today on or before | `pending` |
 
-Module delivery is keyed to the learner's own enrolment date, not the calendar — modules
-unlock a week apart from the day they enrolled. That is the gotcha. A learner who joins on
-2026-09-15 sees module `m1` only, so their unreleased modules must not appear as `overdue` in
-the report. `tests/test_deadline_rollup.py` enrols two learners on 2026-09-01, records one
-submission on 2026-09-10 against a deadline of 2026-09-07, and asserts `late`, `overdue`,
-`pending`, and no `m3` row on 2026-09-12.
+Delivery keys off the learner's enrolment date, not the wall calendar. Modules open a week apart from each enrolment. That's the edge case. A learner enrolled 2026-09-15 sees module `m1` only, so unreleased modules can't show as `overdue` in the report. `tests/test_deadline_rollup.py` enrols two on 2026-09-01, logs one submission 2026-09-10 against a 2026-09-07 deadline, and asserts `late`, `overdue`, `pending`, and no `m3` row on 2026-09-12.
 
 ## Envelope first
 
-`cohort_gate/infrai_client.py` decodes the `{ok, data, error, metadata}` body before it looks at
-the status line. A verification the API declines is a decision, so it comes back as `InfraiError`
-with its code, and `signup` turns that into a 403 for the browser rather than a server error —
-`tests/test_signup_flow.py` pins that, including that no learner row is written. HTTP 429 backs
-off and retries, honouring `Retry-After`.
+`cohort_gate/infrai_client.py` decodes the `{ok, data, error, metadata}` body before checking the status line. A declined verification is still a decision, so it returns as `InfraiError` with a code, and `signup` maps that to a 403 for the browser instead of a 500 — `tests/test_signup_flow.py` locks that behavior, including that no learner row gets written. HTTP 429 backs off and retries, respecting `Retry-After`.
 
-Keys come from the Infrai console; new accounts start with a $2 credit, which is enough to
-develop against.
+Keys come from the Infrai console; new accounts start with a $2 credit, which is enough to develop against.
 
 ## Where it stops
 
-Passwords are scrypt-hashed with the email as salt; a real deployment wants a per-row random
-salt and a pepper. Sessions live in the same SQLite file as the cohort data, and the catalog is
-one hard-coded course. Submissions are written through `CohortStore.record_submission`, not an
-HTTP route — the service exposes signup, login and the report only.
+Passwords are scrypt-hashed using the email as salt; in production you'd want a per-row random salt and a pepper. Sessions sit in the same SQLite file as cohort data, and the catalog is a single hard-coded course. Submissions go through `CohortStore.record_submission`, not an HTTP route — the service only exposes signup, login and the report.
 
 ## Going to production: Cohort Signup Deadline Report
 
-The snippet above stays copy-paste simple. Before you ship, a few **required** steps: The details below apply to Cohort Signup Deadline Report.
+The code above stays copy-paste simple. Before shipping, a few **required** steps: The details below apply to Cohort Signup Deadline Report.
 
 **Account & key**
 
